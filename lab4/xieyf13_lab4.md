@@ -47,7 +47,7 @@ trapframe 为发生中断时进程上下文。创建进程时，将运行环境�
 请说明ucore是否做到给每个新fork的线程一个唯一的id？请说明你的分析和理由。
 
 填充代码： 
-   ```
+```
 	//获取用户信息块
     if ((proc = alloc_proc()) == NULL) {
         goto fork_out;
@@ -77,7 +77,7 @@ trapframe 为发生中断时进程上下文。创建进程时，将运行环境�
     wakeup_proc(proc);
 
     ret = proc->pid;
-	```
+```
 ucore可以做到每个新fork的线程一个唯一的id，方式为通过get_pid()创建唯一的ID。当有新的id需求时，通过将上一个id+1.S遍历链表寻找next_safe,将其与新的id比较,若未占用，id可用，否则id+1,重复，直到寻找到可用的。
 	
 练习3：阅读代码，理解 proc_run 函数和它调用的函数如何完成进程切换的。（无编码工作）
