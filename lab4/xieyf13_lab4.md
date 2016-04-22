@@ -103,7 +103,7 @@ proc_run(struct proc_struct *proc) {
     }
 }
 ```
-关中断，然后准备保存现场，切换堆栈，lcr3指令用于切换页目录表基址。
+关中断，然后准备保存现场，切换堆栈，lcr3指令用于切换页目录表基址。<br>
 2个  idleproc  init_main<br>
 local_intr_save(intr_flag); 关中断<br>
 local_intr_restore(intr_flag); 开中断<br>
