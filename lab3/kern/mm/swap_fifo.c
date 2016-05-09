@@ -137,55 +137,7 @@ static int
 _fifo_tick_event(struct mm_struct *mm)
 { return 0; }
 
-static int
-_extended_clock_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick)
-{
-     list_entry_t *head=(list_entry_t*) mm->sm_priv;
-	 assert(head != NULL);
-	 assert(in_tick==0);
-     //将head指针指向最先进入的页面
-	 list_entry_t?*le = head->prev;
-	 assert(head!=le);
-     //查找最先进入并且未被修改的页面
-	 while(le!=head)
-     {
-	     struct Page *p = le2page(le, pra_page_link);
-		 //获取页表项
-         pte_t *ptep = get_pte(mm->pgdir, p->pra_vaddr, 0);
-		 //判断获得的页表项是否正确
-		 if(*ptep<0x1000)
-		 break;
-         //判断dirty bit
-		 if(!(*ptep & PTE_D))
-		 {
-		     //如果dirty bit为0，换出
-		     //将页面从队列中删除
-		     list_del(le);
-		     assert(p !=NULL);
-		     //将这一页的地址存储在ptr_page中
-             *ptr_page = p;
-			 return = 0;
-	     }
-		 else
-		 {
-		     //如果为1，赋值为0，并跳过
-             *ptep &= 0xffffffbf;
-         }
-         le = le->prev;
-     }
-     //如果执行到这里证明找完了一圈，所有页面都不符合换出条件
-	 //那么强行换出最先进入的页面
-	 le = head->prev;
-	 assert(head!=le);
-     struct Page *p = le2page(le, pra_page_link);
-	 //将进来最早的页面从队列中删除
-	 list_del(le);
-	 assert(p !=NULL);
-     //将这一页的地址存储在ptr_page中
-	 *ptr_page = p;
-	 return 0;
-}	 
-		 
+
 struct swap_manager swap_manager_fifo =
 {
      .name            = "fifo swap manager",
@@ -194,7 +146,6 @@ struct swap_manager swap_manager_fifo =
      .tick_event      = &_fifo_tick_event,
      .map_swappable   = &_fifo_map_swappable,
      .set_unswappable = &_fifo_set_unswappable,
-     //.swap_out_victim = &_extended_clock_swap_out_victim,
      .swap_out_victim = &_fifo_swap_out_victim,
      .check_swap      = &_fifo_check_swap,
 };
