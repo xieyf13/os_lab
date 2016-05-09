@@ -7,6 +7,8 @@
 
 完成do_pgfault（mm/vmm.c）函数，给未被映射的地址映射上物理页。
 代码：
+
+```
 //页表项非空，可以尝试换入页面     
 else{           
     if(swap_init_ok) {              
@@ -23,10 +25,11 @@ else{
         swap_map_swappable(mm, addr, page, 1);        
     }        
     else {             
- 	    cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);            
+         cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);            
  	    goto failed; 
     }    
 } 
+```
 
 请在实验报告中简要说明你的设计实现过程。
 do_pgfault()函数从CR2寄存器中获取页错误异常的虚拟地址，根据error code来确认(1)这个虚拟地址是否在某一个VMA的地址范围内(2)是否具有正确的权限。
@@ -43,6 +46,7 @@ do_pgfault()函数从CR2寄存器中获取页错误异常的虚拟地址，根�
 完成vmm.c中的do_pgfault函数。
 
 代码：
+```
 //页表项非空，可以尝试换入页面     
 else{           
     if(swap_init_ok) {              
@@ -63,10 +67,11 @@ else{
  	    goto failed; 
     }    
 } 
-
+```
 在实现FIFO算法的swap_fifo.c中完成map_swappable和swap_out_vistim函数。
 
 代码：
+```
 static int  
 _fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in) {      
     list_entry_t *head=(list_entry_t*) mm->sm_priv; 
@@ -93,7 +98,7 @@ _fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick
     *ptr_page = p;      
     return 0; 
 }
-
+```
 请在实验报告中简要说明你的设计实现过程。
 FIFO替换算法会维护一个队列，队列按照页面调用的次序排列，越早被加载到内存的页面会越早被换出。
 _fifo_map_swappable()函数将最近被用到的页面添加到算法所维护的次序队列，_fifo_swap_out_victim()函数是用来查询哪个页面需要被换出。
@@ -101,6 +106,7 @@ _fifo_map_swappable()函数将最近被用到的页面添加到算法所维护�
 
 扩展练习 Challenge：实现识别dirty bit的 extended clock页替换算法（需要编程）
 代码：（swap_fifo.c中）
+```
 struct swap_manager swap_manager_fifo =
 {
      .name            = "fifo swap manager",
@@ -113,14 +119,20 @@ struct swap_manager swap_manager_fifo =
      .swap_out_victim = &_fifo_swap_out_victim,
      .check_swap      = &_fifo_check_swap,
 };
+```
 将
+```
      //.swap_out_victim = &_extended_clock_swap_out_victim,
      .swap_out_victim = &_fifo_swap_out_victim,
+```
 改为
+```
      .swap_out_victim = &_extended_clock_swap_out_victim,
      //.swap_out_victim = &_fifo_swap_out_victim,
+```
 启用。
-	 
+
+```
 static int
 _extended_clock_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick)
 {
@@ -168,4 +180,5 @@ _extended_clock_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, i
      //将这一页的地址存储在ptr_page中
 	 *ptr_page = p;
 	 return 0;
-}	 
+}
+```
