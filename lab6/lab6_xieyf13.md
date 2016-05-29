@@ -27,7 +27,7 @@
 ## 练习2: 实现 Stride Scheduling 调度算法（需要编码）
 替换掉之前的RR调度算法，使用了链表和skew_heap对进行了实现。每个函数的实现如下：
 
-#### strid_init函数
+#### init
 
 ```
 static void
