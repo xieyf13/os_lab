@@ -2,28 +2,125 @@
 
 ## 练习1：理解内核级信号量的实现和基于内核级信号量的哲学家就餐问题（不需要编码）
 
-在这个过程中， 需要一个锁`mutex`来控制临界区的访问， 以及每个哲学家对应的信号量`s[]`来标示每个哲学家的状态， 对于每个哲学家来说， 有两个核心操作， 一个是`phi_take_forks_sema`用于得到叉子， 另一个是`phi_put_forks_sema`， 用于将叉子放回， 并且提醒相邻的两位哲学家。
+相比于lab6，lab7使用信号量sem代替lock完成互斥。
 
-`phi_take_forks_sema`会将哲学家的状态标示为`HUNGRY`， 并且尝试获得叉子， 如果相邻两位哲学家都没有在用叉子， 那么该哲学家获得叉子， 并将自己的状态标注为`EATING`， 并`up`自己的信号量， 尝试结束之后， 哲学家会`down`自己的信号量， 如果之前获得了叉子， 那么信号量的资源会被释放， 该进程继续运行， 反之， 该进程就会陷入等待之中， 进入对应的等待队列。
+- 请在实验报告中给出内核级信号量的设计描述，并说其大致执行流流程。
 
-`phi_put_forks_sema`会让哲学家放下自己的叉子， 将哲学家的状态置为`THINKING`， 并且提醒相邻的哲学家尝试获得叉子， 如果相邻的哲学家获得叉子(前提是相邻的哲学家很饿而且原哲学家已经不用叉子了)， 那么相邻的哲学家对应的信号量就会加1， 这样相邻的哲学家的进程被重新唤醒， 继续执行。
+在sem.c和sem.h中定义及实现的信号量sem：
+```
+typedef struct {
+    int value;
+    wait_queue_t wait_queue;
+} semaphore_t;
 
-信号量是基于`semaphore_t`类型的， `semaphore_t`类型包括两部分， 一个是`value`， 用于记住资源的数量， 另一个是一个`wait_queue`， 用来记录等待资源的队列。
+void sem_init(semaphore_t *sem, int value);
+void up(semaphore_t *sem);
+void down(semaphore_t *sem);
+bool try_down(semaphore_t *sem);
+```
 
-对于一个信号量， 包含三个操作`up`， `down`， `try_down`， 三个操作都需要屏蔽中断， `up`操作会给相应的信号量资源加一， 并且将等待队列中最前的进程取出， 唤醒该进程， `down`操作会将信号量的资源是否为正， 如果为正， 则减一后返回， 否则就使进程进入"等待"状态， 兵加入到等待队列之中， 进行进程调度， `try_down`操作也会将信号量的资源减一， 但如果资源不为正的话， `try_down`什么也不会做， 直接返回。  
+up函数：先禁用中断，检查等待队列。若等待队列为空，value值加一；否则唤醒一个等待进程，然后恢复中断。
 
-用户态的信号量机制， 只要对内核态下的信号量机制进行封装即可， 在内核维护一个信号量的数组， 用`sem_init`来得到一个内核信号量的id， 用`wait`操作来使用系统调用， 调用内核态下的`down`， 用`post`操作来， 通过系统调用调用内核中的`up`即可。
+down函数：先屏蔽中断，若value的值大于0，则减一并恢复中断后退出。否则恢复中断，将当前进程加入到等待队列中，然后唤醒其他进程。直到该进程再次被唤醒，先屏蔽中断，将其从等待队列中删除，最后恢复中断。
 
-但在管程中不同的是， 操作系统一定会响应完所有在等待队列中的进程的请求， 才会接受新的请求， 这是一个管程中有一个`next`和一个`mutex`所导致的。  
+- 请在实验报告中给出给用户态进程/线程提供信号量机制的设计方案，并比较说明给内核级提供信号量机制的异同。
 
-条件变量一般在管程的持有之下使用， 一个管程包括一个保护临界区的信号量`mutex`(资源被初始化为1)， 以及另一个信号量`next`(资源被初始化为0)， 用于唤醒在等待队列中进程的锁， 以及一个32位的整数`next_count`， 用于存储该管程下所有等待进程的个数， 以及一个条件变量的指针`cv`， 用于管理该管程下所有的条件变量。
+相同：对于用户态进程/线程的信号量，信号量的各项操作都会转换为系统调用，在内核中会有一个信号量与之对应。每当用户进程调用信号量相关函数时，都会进入系统调用，由操作系统内核进行处理，之后再返回到用户态开始执行。
 
-而条件变量本身， 包含以下的成员， 一个信号量`sem`， 一个32位整数`count`， 用于记录在自己等待队列中的进程数量， 以及一个指向自己管理者的管程指针`owner`.
+不同：用户态需要使用内核态信号量机制，并且在使用时进行系统调用。
 
-对于条件变量来说， 有两个方法`cond_signal`， `cond_wait`， `cond_signal`会让对应的条件变量中的条件量的资源增加1， 同时， 也会让`next`的资源减1(即等待处于"等待"状态的进程出现)， 而`cond_wait`会检查是否现在有处于"等待"状态的进程， 如果有让`next`的资源增加1， 允许"等待"进程进入调度， 如果没有"等待"进程， 就释放临界锁， 允许新的请求， 之后让等待的进程的信号量的资源减少1。
+## 练习2: 完成内核级条件变量和基于内核级条件变量的哲学家就餐问题（需要编码）
 
-用户态的条件变量， 对内核态的条件变量进行封装即可， 在内核当中维持条件变量的数组， 使用`get_cond`获得对应的条件变量的id， 使用`signal`和`wait`对相应的条件变量进行操作， 但唯一不同的是， 在这里是传入条件变量的id而非其地址。 另外， 需要使用系统调用来使`signal`和`wait`调用内核态下的`cond_wait`和`cond_signal`。
+- 请在实验报告中给出内核级条件变量的设计描述，并说其大致执行流流程。
 
-## 练习2：完成内核级条件变量和基于内核级条件变量的哲学家就餐问题
+该内容的实现主要包括两部分，管程机制的建立，以及使用条件变量实现哲学家问题。
 
-见代码。
+cond_signal
+
+```
+void 
+cond_signal (condvar_t *cvp) {
+   cprintf("cond_signal begin: cvp %x, cvp->count %d, cvp->owner->next_count %d\n", cvp, cvp->count, cvp->owner->next_count);  
+   monitor_t* mtp = cvp->owner;
+   if (cvp->count > 0){
+	   mtp->next_count++;
+	   up(&(cvp->sem));
+	   down(&(mtp->next));
+	   mtp->next_count--;
+   }
+   cprintf("cond_signal end: cvp %x, cvp->count %d, cvp->owner->next_count %d\n", cvp, cvp->count, cvp->owner->next_count);
+}
+```
+
+首先进程判断cv.count，如果不大于0，则表示当前没有执行cond_wait而睡眠的进程，函数退出；如果大于0，这表示当前有执行cond_wait而睡眠的进程A，因此需要唤醒等待在cv.sem上睡眠的进程A。由于只允许一个进程在管程中执行，所以一旦进程B唤醒了别人（进程A），那么自己就需要睡眠。故让monitor.next_count加一，且让自己（进程B）睡在信号量monitor.next上。如果睡醒了，这让monitor.next_count减一。
+
+cond_wait
+
+```
+void
+cond_wait (condvar_t *cvp) {
+    cprintf("cond_wait begin:  cvp %x, cvp->count %d, cvp->owner->next_count %d\n", cvp, cvp->count, cvp->owner->next_count);
+    cvp->count ++;
+    monitor_t* mtp = cvp->owner;
+    if (mtp->next_count > 0)
+    	up(&(mtp->next));
+    else
+    	up(&(mtp->mutex));
+    down(&(cvp->sem));
+    cvp->count --;
+    cprintf("cond_wait end:  cvp %x, cvp->count %d, cvp->owner->next_count %d\n", cvp, cvp->count, cvp->owner->next_count);
+}
+```
+
+如果调用了cond_wait函数，那么当前等待该条件的睡眠进程个数count加一。
+
+如果next_count大于0，说明有大于等于1个进程执行cond_signal且睡着了，所以唤醒mtp的next信号量，然后进程睡在cv.sem上，如果睡醒了，则让cv.count减一，表示等待此条件的睡眠进程个数少了一个，
+
+如果next_count小于等于0，表示目前没有进程执行cond_signal函数且睡着了，那需要唤醒的是由于互斥条件限制而无法进入管程的进程，所以要唤醒睡在monitor.mutex上的进程。然后进程A睡在cv.sem上，如果睡醒了，则让cv.count减一，表示等待此条件的睡眠进程个数少了一个，可继续执行了。
+
+```
+void phi_take_forks_condvar(int i) {
+     down(&(mtp->mutex));
+//--------into routine in monitor--------------
+     // I am hungry
+     // try to get fork
+     state_condvar[i] = HUNGRY;
+     phi_test_condvar(i);
+     while (state_condvar[i] != EATING)
+    	 cond_wait(&mtp->cv[i]);
+//--------leave routine in monitor--------------
+      if(mtp->next_count>0)
+         up(&(mtp->next));
+      else
+         up(&(mtp->mutex));
+}
+```
+
+当哲学家开始时，首先设置状态为HUNGRY，之后检测是否满足他的条件，如果不满足的话一直对条件变量进行wait操作。
+
+```
+void phi_put_forks_condvar(int i) {
+     down(&(mtp->mutex));
+
+//--------into routine in monitor--------------
+     // I ate over
+     // test left and right neighbors
+     state_condvar[i] = THINKING;
+     phi_test_condvar(LEFT);
+     phi_test_condvar(RIGHT);
+//--------leave routine in monitor--------------
+     if(mtp->next_count>0)
+        up(&(mtp->next));
+     else
+        up(&(mtp->mutex));
+}
+```
+
+在哲学家放下筷子时，将他的状态设置为THINKING，同时test它左右两个人的状态。
+
+- 请在实验报告中给出给用户态进程/线程提供条件变量机制的设计方案，并比较说明给内核级提供条件变量机制的异同。
+
+相同：对于用户态进程/线程的条件变量，条件变量的各项操作都会转换为系统调用，在内核中会有一个条件变量与之对应。每当用户进程调用条件变量相关函数时，都会进入系统调用，由操作系统内核进行处理，之后再返回到用户态开始执行。
+
+不同：用户态需要使用内核态条件变量机制，并且在使用时进行系统调用。
+
