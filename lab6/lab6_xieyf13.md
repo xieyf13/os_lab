@@ -25,12 +25,111 @@
 将ucore中现有的一个`run_list`改为一个`run_lists[]`, 而对于不同的调度队列, 设置不同的最大时间片时间, 例如100, 150, 200, 250, 300..., 几个队列的优先级也逐渐递减. 在进行enqueue时, 根据进程优先级, 将进程插入到特定的调度队列当中, 对于同一个调度队列中的进程, 采取时间片轮转算法进行调度, 选择下一个进程时, 优先从高优先级队列里进行选择. 
 
 ## 练习2: 实现 Stride Scheduling 调度算法（需要编码）
+替换掉之前的RR调度算法，使用了链表和skew_heap对进行了实现。每个函数的实现如下：
 
-Stride Schedule调度算法的大致思想, 是为每个进程维持一个"路程", 每次选择进程, 就将行走"路程"最短那个为下一个. 而每个进程的"路程", 根据以下的方法进行确定: 先确定一个大常数, 然后每次进程被选择时, 路程就加上这个大常数除以优先级的数值, 这样运行足够长的时间, 就可以保证每个进程运行的时间, 大致和优先级的倒数成比例. 
+#### strid_init函数
 
-在实际实现的过程中, 会有"路程"溢出的问题, 在解决这个问题之前, 需要先确定一个结论, 即在一次调度之后, 任何进程之间的"路程"差距不会多于一个之前设定的大常数, 因为多于一个大常数的话(我们可以假设是"路程"最短进程和"路程"最长之间的差距), 就意味着这个调度之后少于另外某进程多于一个大常数的进程, 在调度之前也一定小于某进程, 但它却没有得到调度. 这与该算法矛盾. 
+```
+static void
+stride_init(struct run_queue *rq) {
+     /* LAB6: 2013011428 */
+     list_init(&(rq->run_list));
+     rq->lab6_run_pool = NULL;
+     rq->proc_num = 0;
+}
+```
 
-通过这个结论, 就可以判断两个进程之间的前后差距, 即"路程"相差不多于一个大常数, 而如果大常数选为0x7FFFFFFF, 就可以利用有符号数的比较, 确定是否超过大常数. 
+进行初始化操作，按要求进行即可。
 
-在细节上, Stride Schedule调度算法可以完全沿用时间片轮转算法中函数的语义, 但不采用调度队列而采用调度堆. 
- 
+#### enqueue
+
+```
+static void
+stride_enqueue(struct run_queue *rq, struct proc_struct *proc) {
+     /* LAB6: 2013011428 */
+#if USE_SKEW_HEAP
+     rq->lab6_run_pool =
+          skew_heap_insert(rq->lab6_run_pool, &(proc->lab6_run_pool), proc_stride_comp_f);
+#else
+     assert(list_empty(&(proc->run_link)));
+     list_add_before(&(rq->run_list), &(proc->run_link));
+#endif
+     if (proc->time_slice == 0 || proc->time_slice > rq->max_time_slice) {
+          proc->time_slice = rq->max_time_slice;
+     }
+     proc->rq = rq;
+     rq->proc_num ++;
+}
+```
+
+如果使用堆时，采用skew_heap_insert函数进行插入操作，采用链表时使用list_add_before进行插入操作。更新入队进程所需要占用的时间片，设置proc的rq变量，增加进程数。
+
+#### dequeue
+
+```
+static void
+stride_dequeue(struct run_queue *rq, struct proc_struct *proc) {
+     /* LAB6: 2013011428 */
+#if USE_SKEW_HEAP
+     rq->lab6_run_pool =
+          skew_heap_remove(rq->lab6_run_pool, &(proc->lab6_run_pool), proc_stride_comp_f);
+#else
+     assert(!list_empty(&(proc->run_link)) && proc->rq == rq);
+     list_del_init(&(proc->run_link));
+#endif
+     rq->proc_num --;
+}
+```
+
+两种方法分别使用skew_heap_remove和list_del_init方法进行删除。
+
+#### pick_next
+
+```
+static struct proc_struct *
+stride_pick_next(struct run_queue *rq) {
+     /* LAB6: 2013011428 */
+#if USE_SKEW_HEAP
+     if (rq->lab6_run_pool == NULL) return NULL;
+     struct proc_struct *p = le2proc(rq->lab6_run_pool, lab6_run_pool);
+#else
+     list_entry_t *le = list_next(&(rq->run_list));
+
+     if (le == &rq->run_list)
+          return NULL;
+     
+     struct proc_struct *p = le2proc(le, run_link);
+     le = list_next(le);
+     while (le != &rq->run_list)
+     {
+          struct proc_struct *q = le2proc(le, run_link);
+          if ((int32_t)(p->lab6_stride - q->lab6_stride) > 0)
+               p = q;
+          le = list_next(le);
+     }
+#endif
+     if (p->lab6_priority == 0)
+          p->lab6_stride += BIG_STRIDE;
+     else p->lab6_stride += BIG_STRIDE / p->lab6_priority;
+     return p;
+}
+```
+
+这是调度算法的核心，使用堆时，堆顶元素即为最小值。采用链表的话需要遍历链表才能找到最小值。找到之后根据该进程的priority对步长stride进行增加。
+
+#### proc_tick
+
+```
+static void
+stride_proc_tick(struct run_queue *rq, struct proc_struct *proc) {
+     /* LAB6: 2013011428 */
+     if (proc->time_slice > 0) {
+          proc->time_slice --;
+     }
+     if (proc->time_slice == 0) {
+          proc->need_resched = 1;
+     }
+}
+```
+
+对于时间片进行处理，每次时钟中断时减一，值为0时则进行相关调度。
