@@ -2,11 +2,7 @@
 
 ## 练习1：用 Round Robin 调度算法（不需要编码）
 
-首先需要知道, 在ucore当中, 使用`run_list`作为调度队列, 另外, 需要知道的是, 在lab6中, 还不能依靠时钟中断进行进程调度, `schdule`还需要手动调用(即表示需要自行判断当前进程是否需要被调度). 
-
-Round Robin调度算法, 可以看成是在时间片限制下的FIFO算法, 实现这个算法, 包括5个函数`RR_init`, `RR_enqueue`, `RR_dequeue`, `RR_pick_next`, `RR_proc_tick`, 由于本质上是一种FIFO算法, 因此`RR_enqueue`, `RR_dequeue`和`RR_pick_next`与FIFO算法没有任何区别, 实现时间片限制的部分是在`RR_proc_tick`, 每次调用这个函数, 就会让进程的时间片剩余时间减少, 减到零之后就将该进程置为可被调度, 而等待操作系统的调度. 
-
-_理解并分析sched_calss中各个函数指针的用法, 并接合Round Robin调度算法描ucore的调度执行过程_
+- 请理解并分析sched_calss中各个函数指针的用法，并接合Round Robin 调度算法描ucore的调度执行过程
 
 `RR_enqueue`函数负责将一个进程加入到调度队列的末尾, 并初始化时间片长度, 等待被执行. 
 
